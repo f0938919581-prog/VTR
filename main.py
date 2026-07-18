@@ -97,9 +97,9 @@ if __name__ == "__main__":
     import uvicorn
     # 讓程式自己喚醒伺服器，打包成 EXE 後連按兩下就能直接運行
     uvicorn.run(app, host="127.0.0.1", port=8000)
-# 修改前：engine = create_engine('sqlite:///xingyao_db.sqlite')
-# 修改後：請換成您的 Supabase 連線字串
-DATABASE_URL = "postgresql://postgres:您的密碼@db.您的專案ID.supabase.co:5432/postgres"
+import os
+import uvicorn
 
-from sqlalchemy import create_engine
-engine = create_engine(DATABASE_URL)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))  # 抓取 Render 指定的連接埠
+    uvicorn.run(app, host="0.0.0.0", port=port)
