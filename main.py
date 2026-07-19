@@ -100,11 +100,5 @@ if __name__ == "__main__":
 import os
 import uvicorn
 
-if __name__ == "__main__":
-    import uvicorn
-    import os
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port) # 這裡建議用 "main:app" 字串格式
-@app.get("/items")
-def read_items():
-    return {"message": "Hello World"}
+
+app = FastAPI()
