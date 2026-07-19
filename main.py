@@ -1,118 +1,79 @@
-import uuid
-from datetime import datetime
-import bcrypt
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, String, Boolean, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
-
-# ==========================================
-# 1. 資料庫設定 (與先前相同)
-# ==========================================
-engine = create_engine('sqlite:///xingyao_db.sqlite', connect_args={"check_same_thread": False})
-Base = declarative_base()
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-class User(Base):
-    __tablename__ = 'users'
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    username = Column(String(50), unique=True, nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    full_name = Column(String(100), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    audit_logs = relationship("AuditLog", back_populates="user")
-
-class AuditLog(Base):
-    __tablename__ = 'audit_logs'
-    log_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(36), ForeignKey('users.id'))
-    action = Column(String(50), nullable=False)
-    ip_address = Column(String(45))
-    details = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    user = relationship("User", back_populates="audit_logs")
-
-Base.metadata.create_all(engine)
-
-# ==========================================
-# 2. 定義 API 請求的資料格式 (Pydantic)
-# ==========================================
-class UserCreate(BaseModel):
-    username: str
-    email: str
-    password: str
-    full_name: str
-
-# 取得資料庫連線的依賴函式
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# ==========================================
-# 3. 建立 FastAPI 應用程式與端點
-# ==========================================
-app = FastAPI(title="星耀科技 - 個資管理 API", description="核心個資系統後端", version="1.0")
-
-@app.post("/api/register", summary="註冊新使用者")
-def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
-    # 檢查帳號或 Email 是否已存在
-    existing_user = db.query(User).filter((User.username == user_in.username) | (User.email == user_in.email)).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="帳號或 Email 已經被註冊過了")
-
-    # 密碼加密
-    salt = bcrypt.gensalt()
-    hashed_pwd = bcrypt.hashpw(user_in.password.encode('utf-8'), salt).decode('utf-8')
-
-    # 建立使用者
-    new_user = User(
-        username=user_in.username,
-        email=user_in.email,
-        password_hash=hashed_pwd,
-        full_name=user_in.full_name
-    )
-    db.add(new_user)
-    db.flush() 
-
-    # 建立稽核日誌
-    audit_log = AuditLog(
-        user_id=new_user.id,
-        action='REGISTER_USER',
-        ip_address='127.0.0.1', # 實務上可從 FastAPI 的 Request 中取得真實 IP
-        details={"email_used": user_in.email, "client": "web_api"}
-    )
-    db.add(audit_log)
-    db.commit()
-
-    return {
-        "status": "success",
-        "message": f"成功註冊使用者：{new_user.full_name}",
-        "user_id": new_user.id
-    }
-if __name__ == "__main__":
-    import uvicorn
-    # 讓程式自己喚醒伺服器，打包成 EXE 後連按兩下就能直接運行
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 import os
-import uvicorn
+from typing import List
 
+# 1. 資料庫連線設定 (讀取 Render 設定的環境變數)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# 2. 定義資料庫模型
+class EmployeeDB(Base):
+    __tablename__ = "employees"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    department = Column(String)
+
+class TaskDB(Base):
+    __tablename__ = "tasks"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String)
+    status = Column(String)
+
+# 建立資料表
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-from fastapi import FastAPI
 
-# 建立 FastAPI 實例
-app = FastAPI()
+# 3. 員工系統 API
+@app.post("/employees/")
+def register_employee(name: str, department: str):
+    db = SessionLocal()
+    new_emp = EmployeeDB(name=name, department=department)
+    db.add(new_emp)
+    db.commit()
+    db.refresh(new_emp)
+    db.close()
+    return {"message": "員工已寫入資料庫", "id": new_emp.id}
 
-# 定義一個測試路徑
-@app.get("/")
-def read_root():
-    return {"message": "未來海系統運作中"}
+@app.get("/employees/")
+def get_employees():
+    db = SessionLocal()
+    employees = db.query(EmployeeDB).all()
+    db.close()
+    return employees
 
-# 定義另一個測試路徑
-@app.get("/items/{item_id}")
-def read_item(item_id: int):
-    return {"item_id": item_id}
+# 4. 任務管理 API
+@app.post("/tasks/")
+def add_task(title: str, status: str = "進行中"):
+    db = SessionLocal()
+    new_task = TaskDB(title=title, status=status)
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    db.close()
+    return {"message": "任務已記錄", "task_id": new_task.id}
+
+@app.get("/tasks/")
+def get_tasks():
+    db = SessionLocal()
+    tasks = db.query(TaskDB).all()
+    db.close()
+    return tasks
+
+@app.put("/tasks/{task_id}")
+def update_task_status(task_id: int, new_status: str):
+    db = SessionLocal()
+    task = db.query(TaskDB).filter(TaskDB.id == task_id).first()
+    if not task:
+        db.close()
+        raise HTTPException(status_code=404, detail="找不到該任務")
+    task.status = new_status
+    db.commit()
+    db.close()
+    return {"message": "任務狀態已更新"}
