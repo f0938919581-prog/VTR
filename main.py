@@ -102,3 +102,17 @@ import uvicorn
 
 
 app = FastAPI()
+from fastapi import FastAPI
+
+# 建立 FastAPI 實例
+app = FastAPI()
+
+# 定義一個測試路徑
+@app.get("/")
+def read_root():
+    return {"message": "未來海系統運作中"}
+
+# 定義另一個測試路徑
+@app.get("/items/{item_id}")
+def read_item(item_id: int):
+    return {"item_id": item_id}
